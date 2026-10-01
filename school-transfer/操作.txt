@@ -1,0 +1,26 @@
+Windows的terminal执行
+
+在当前目录下执行
+
+$env:TRANSFER_PASSWORD = "nay"
+python .\transfer.py --host 0.0.0.0 --port 8765
+
+
+然后浏览器输入：http://202.194.67.200:8765/
+以及在terminal输入的密码即可使用
+
+
+
+注意，如果不显示下面内容
+PS C:\Users\nay\Downloads> python .\transfer.py --host 0.0.0.0 --port 8765
+互传页面密码（输入不显示）:
+
+而是直接
+PS C:\Users\nay\Downloads> python .\transfer.py --host 0.0.0.0 --port 8765
+PS C:\Users\nay\Downloads> 
+
+说明Python环境没安装
+安装Python 环境命令
+
+winget install Python.Python.3.12
+
