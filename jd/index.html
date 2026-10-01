@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>JD 招聘信息解析器</title>
+  <style>
+    :root {
+      --bg: #f5f6f8;
+      --card: #ffffff;
+      --border: #e2e5ea;
+      --text: #1a1d21;
+      --muted: #6b7280;
+      --primary: #2563eb;
+      --primary-hover: #1d4ed8;
+      --accent: #10b981;
+      --code-bg: #0f172a;
+      --code-text: #e2e8f0;
+      --radius: 12px;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      padding: 32px 20px;
+    }
+    .container { max-width: 960px; margin: 0 auto; }
+    h1 { font-size: 24px; margin-bottom: 8px; }
+    .subtitle { color: var(--muted); font-size: 14px; margin-bottom: 24px; }
+
+    .input-row { display: flex; gap: 12px; margin-bottom: 24px; }
+    input[type="text"] {
+      flex: 1;
+      padding: 14px 16px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      font-size: 15px;
+      outline: none;
+      transition: border .2s;
+    }
+    input[type="text"]:focus { border-color: var(--primary); }
+    button {
+      padding: 14px 28px;
+      background: var(--primary);
+      color: #fff;
+      border: none;
+      border-radius: var(--radius);
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: background .2s;
+    }
+    button:hover { background: var(--primary-hover); }
+    button:disabled { background: #9ca3af; cursor: not-allowed; }
+
+    .status { color: var(--muted); font-size: 14px; margin-bottom: 16px; min-height: 20px; }
+    .status.error { color: #dc2626; }
+    .status.ok { color: var(--accent); }
+
+    .result-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    @media (max-width: 720px) { .result-grid { grid-template-columns: 1fr; } }
+
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+      min-height: 300px;
+      display: flex;
+      flex-direction: column;
+    }
+    .card-header {
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--border);
+      font-weight: 600;
+      font-size: 14px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .badge {
+      font-size: 11px;
+      padding: 2px 8px;
+      border-radius: 999px;
+      background: #eef2ff;
+      color: var(--primary);
+      font-weight: 500;
+    }
+    .card-body {
+      padding: 16px;
+      overflow: auto;
+      flex: 1;
+      font-size: 13px;
+      line-height: 1.7;
+      white-space: pre-wrap;
+      word-break: break-all;
+      color: var(--text);
+    }
+    .card-body.code {
+      background: var(--code-bg);
+      color: var(--code-text);
+      font-family: "SF Mono", "Consolas", "Menlo", monospace;
+      font-size: 12.5px;
+      white-space: pre;
+    }
+    .empty { color: var(--muted); text-align: center; padding: 60px 20px; }
+    .spinner {
+      display: inline-block;
+      width: 16px; height: 16px;
+      border: 2px solid #fff;
+      border-top-color: transparent;
+      border-radius: 50%;
+      animation: spin .7s linear infinite;
+      vertical-align: -3px;
+      margin-right: 6px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>JD 招聘信息解析器</h1>
+    <p class="subtitle">输入招聘链接，自动抓取 + OCR + 大模型结构化解析</p>
+
+    <div class="input-row">
+      <input type="text" id="url" placeholder="粘贴招聘链接，如 https://mp.weixin.qq.com/s/... 或 https://job.xxx.edu.cn/..."
+             onkeydown="if(event.key==='Enter') analyze()">
+      <button id="btn" onclick="analyze()">解析</button>
+    </div>
+
+    <div class="status" id="status"></div>
+
+    <div class="result-grid">
+      <div class="card">
+        <div class="card-header">OCR / 正文文本 <span class="badge" id="type-badge"></span></div>
+        <div class="card-body" id="ocr-result"><div class="empty">OCR 结果将显示在这里</div></div>
+      </div>
+      <div class="card">
+        <div class="card-header">结构化 JSON <span class="badge" id="model-badge"></span></div>
+        <div class="card-body code" id="json-result"><div class="empty" style="color:#94a3b8">JSON 结果将显示在这里</div></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const $ = id => document.getElementById(id);
+
+    async function analyze() {
+      const url = $('url').value.trim();
+      if (!url) { setStatus('请输入 URL', 'error'); return; }
+
+      const btn = $('btn');
+      btn.disabled = true;
+      btn.innerHTML = '<span class="spinner"></span>解析中...';
+      setStatus('正在抓取并解析，请稍候（OCR + LLM 可能需要 10~30 秒）...', '');
+      $('ocr-result').textContent = '';
+      $('json-result').textContent = '';
+      $('type-badge').textContent = '';
+      $('model-badge').textContent = '';
+
+      try {
+        const resp = await fetch('/api/analyze', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ url })
+        });
+        const data = await resp.json();
+        if (!resp.ok) {
+          setStatus('错误：' + (data.detail || '请求失败'), 'error');
+          return;
+        }
+        $('ocr-result').textContent = data.ocr_text || '(空)';
+        $('json-result').textContent = JSON.stringify(data.json, null, 2);
+        $('type-badge').textContent = data.type === 'wechat' ? '微信文章' : '网页';
+        $('model-badge').textContent = data.model;
+        setStatus('解析完成 ✅', 'ok');
+      } catch (e) {
+        setStatus('错误：' + e.message, 'error');
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = '解析';
+      }
+    }
+
+    function setStatus(msg, cls) {
+      const s = $('status');
+      s.textContent = msg;
+      s.className = 'status ' + cls;
+    }
+  </script>
+</body>
+</html>
